@@ -1,9 +1,9 @@
 import os
 
+import mycord
+
 import discord
 from discord.ext import commands
-
-import mycord
 
 from dotenv import load_dotenv
 
@@ -27,7 +27,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
     await bot.load_extension(
-        "cogs.rocketleague"
+        "cogs.clash"
     )
 
 
