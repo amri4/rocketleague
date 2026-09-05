@@ -1,9 +1,19 @@
-import os
-
 import discord
 from discord.ext import commands
 
-from utils.clash_api import ClashAPI
+import mycord
+
+
+db = mycord.DB()
+
+
+db.create_table(
+    "coc_accounts",
+    """
+    discord_id INTEGER PRIMARY KEY,
+    player_tag TEXT NOT NULL
+    """
+)
 
 
 class Clash(commands.Cog):
@@ -11,15 +21,8 @@ class Clash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-        self.api = ClashAPI(
-            os.getenv("COC_API_TOKEN")
-        )
-
-        self.accounts = {}
-
     @commands.group(name="coc", invoke_without_command=True)
     async def coc(self, ctx):
-
         await ctx.send(
             "🏰 **Clash of Clans**\n\n"
             "`!coc link #PLAYER_TAG`\n"
@@ -27,98 +30,65 @@ class Clash(commands.Cog):
         )
 
     @coc.command(name="link")
-    async def link(self, ctx, tag):
+    async def link(self, ctx, player_tag):
 
-        data = await self.api.get_player(tag)
+        player_tag = player_tag.upper()
 
-        if not data:
-            await ctx.send(
-                "❌ I couldn't find that player."
+        if not player_tag.startswith("#"):
+            player_tag = "#" + player_tag
+
+        existing = db.fetchone(
+            "coc_accounts",
+            {
+                "discord_id": ctx.author.id
+            }
+        )
+
+        if existing:
+            db.update(
+                "coc_accounts",
+                {
+                    "player_tag": player_tag
+                },
+                {
+                    "discord_id": ctx.author.id
+                }
             )
-            return
-
-        self.accounts[ctx.author.id] = data["tag"]
+        else:
+            db.insert(
+                "coc_accounts",
+                {
+                    "discord_id": ctx.author.id,
+                    "player_tag": player_tag
+                }
+            )
 
         await ctx.send(
-            f"✅ Linked **{data['name']}**!\n"
-            f"Tag: `{data['tag']}`"
+            f"✅ Your Clash of Clans account is now linked:\n"
+            f"`{player_tag}`"
         )
 
     @coc.command(name="profile")
     async def profile(self, ctx):
 
-        tag = self.accounts.get(ctx.author.id)
+        account = db.fetchone(
+            "coc_accounts",
+            {
+                "discord_id": ctx.author.id
+            }
+        )
 
-        if not tag:
+        if not account:
             await ctx.send(
-                "❌ You haven't linked a Clash of Clans account.\n"
-                "Use `!coc link #PLAYER_TAG`."
+                "❌ You haven't linked a Clash of Clans account yet."
             )
             return
 
-        data = await self.api.get_player(tag)
+        player_tag = account["player_tag"]
 
-        if not data:
-            await ctx.send(
-                "❌ Couldn't retrieve your player."
-            )
-            return
-
-        embed = discord.Embed(
-            title=f"🏰 {data['name']}",
-            description=f"`{data['tag']}`"
+        await ctx.send(
+            f"🏰 Linked account: `{player_tag}`"
         )
-
-        embed.add_field(
-            name="🏠 Town Hall",
-            value=data.get("townHallLevel", "?"),
-            inline=True
-        )
-
-        embed.add_field(
-            name="⭐ XP Level",
-            value=data.get("expLevel", "?"),
-            inline=True
-        )
-
-        embed.add_field(
-            name="🏆 Trophies",
-            value=data.get("trophies", "?"),
-            inline=True
-        )
-
-        embed.add_field(
-            name="🏆 Best Trophies",
-            value=data.get("bestTrophies", "?"),
-            inline=True
-        )
-
-        embed.add_field(
-            name="⚔️ War Stars",
-            value=data.get("warStars", "?"),
-            inline=True
-        )
-
-        clan = data.get("clan")
-
-        if clan:
-            embed.add_field(
-                name="🏰 Clan",
-                value=(
-                    f"**{clan['name']}**\n"
-                    f"`{clan['tag']}`"
-                ),
-                inline=False
-            )
-
-        if data.get("league"):
-            embed.add_field(
-                name="🏆 League",
-                value=data["league"]["name"],
-                inline=True
-            )
-
-        await ctx.send(embed=embed)
 
 
 async def setup(bot):
